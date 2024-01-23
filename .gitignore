@@ -1,0 +1,9 @@
+.DS_Store/
+.ipynb_checkpoints/
+anno_docs/
+training_docs/
+anno_docs.zip
+sbsDepDone.csv
+training_docs.zip
+translatedDepText.csv
+
