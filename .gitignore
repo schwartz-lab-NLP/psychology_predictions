@@ -6,4 +6,4 @@ anno_docs.zip
 sbsDepDone.csv
 training_docs.zip
 translatedDepText.csv
-
+__pycache__/
