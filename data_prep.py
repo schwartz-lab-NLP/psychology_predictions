@@ -76,6 +76,25 @@ DIALOG_TURN_TO_TEMPLATE = {
     "Annotator": ANNOTATOR_SPEECH_TURN_TEMPLATE,
 }
 
+# SESSION_PREFIX = "Below is part of a psychology session transcript, with the therapist (T:) and the client (C:):\n"
+# SESSION_POSTFIX = "\nAnswer in one word: Did the session improve the client's wellbeing? (Yes/No): "
+# SESSION_PREFIX = 'Below (delimited by triple quotes) is part of a psychology session transcript, with the therapist (T:) and the client (C:):\n"""'
+# SESSION_POSTFIX = '"""\nBased on this psychology session, did the session improve the client\'s wellbeing? Answer in one word (Yes/No): '
+
+# SESSION_PREFIX = 'Below (delimited by triple quotes) is part of a psychology session transcript, with the therapist (T:) and the client (C:) speech turns on alternating lines:\n"""'
+# SESSION_POSTFIX = '"""\nAnswer the following three questions. ' \
+#                   'Did you understand all that was written? (Yes/No): Yes. ' \
+#                   'Did this transcript cover the whole session? (Yes/No): No. ' \
+#                   'Based on this psychology session, did the session improve the client\'s wellbeing? (Yes/No): '
+
+SESSION_PREFIX = '**Task: Binary Classification**\n' \
+                 '**Classes: Yes/No**\n' \
+                 '**Input Text Description: Part of a psychology session transcript, ' \
+                 'with the therapist (T:) and the client (C:) speech turns on alternating lines**\n' \
+                 '**Input Text: '
+SESSION_POSTFIX = '**\n' \
+                  '**Question: Did the session improve the client\'s wellbeing?**\n' \
+                  '**Answer (Yes/No): '
 
 
 class Preprocess:
@@ -120,7 +139,7 @@ class Preprocess:
     def _return(self, *return_value):
         self._end = time.time()
         self._runtime = self._end - self._start
-        self.verbose_print(f"Finished Preprocessing in: {round(self._runtime, 2)} seconds")
+        self.verbose_print(f"Finished Preprocessing in: {round(self._runtime, 2)} seconds\n")
         return return_value
 
     def _load_csvs(self):
@@ -369,6 +388,7 @@ class Preprocess:
         )
 
         sessions_text = self.df.groupby(SESSION_GROUP_COLUMNS)['eng_event_plaintext_fmt'].agg(SPEECH_TURNS_DELIMITER.join)
+        sessions_text = SESSION_PREFIX + sessions_text + SESSION_POSTFIX
         sessions = sessions_text.reset_index().rename(columns={'eng_event_plaintext_fmt': 'eng_session_plaintext'})
 
         self.final_speech_turns_df = self.df.copy()

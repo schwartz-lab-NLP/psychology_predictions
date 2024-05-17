@@ -7,3 +7,6 @@ sbsDepDone.csv
 training_docs.zip
 translatedDepText.csv
 __pycache__/
+_unsloth_sentencepiece_temp/
+pyhistory*.py
+wandb/
