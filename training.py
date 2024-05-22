@@ -8,11 +8,10 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 print("Setting: os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'")
 
 import torch
-from transformers import TrainingArguments
+from transformers import TrainingArguments, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig
 from trl import ModelConfig, SFTTrainer, get_kbit_device_map, get_peft_config, get_quantization_config
 from datasets import Dataset
-from unsloth import FastLanguageModel
 
 from data_prep import Preprocess, SESSION_PREFIX, SESSION_POSTFIX
 
@@ -32,44 +31,45 @@ TAG_MAPPING = {1: 'Yes', -1: 'No'}
 
 def run_training():
     train, val, test = Preprocess().run()
-    # device = torch.device('cuda')
+    device = torch.device('cuda')
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=MODEL, 
-        max_seq_length=MAX_CONTEXT_LENGTH, 
-        dtype=None,  # torch.float16, 
-        load_in_4bit=True,
-        # device_map=device,
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,  # Activate 4-bit precision base model loading,
+        bnb_4bit_quant_type="nf4",  # Quantization type (fp4 or nf4),
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL)
+
+    tokenizer.padding_side = 'right'
+    tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL, 
+        quantization_config=bnb_config,
+        device_map="auto",
     )
 
     train = prepare_dataset_for_training(train, tokenizer)
     val = prepare_dataset_for_training(val, tokenizer)
 
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r = 16,
-        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
-                          "gate_proj", "up_proj", "down_proj",],
-        lora_alpha = 16,
-        lora_dropout = 0, # Dropout = 0 is currently optimized
-        bias = "none",    # Bias = "none" is currently optimized
-        use_gradient_checkpointing = True,
-        random_state = 3407,
+    lora_config = LoraConfig(
+        r=8,
+        target_modules = ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+        task_type="CAUSAL_LM",
     )
 
     args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=4,
+        per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
+        warmup_steps=2,
         learning_rate=2e-4,
-        logging_steps=10,
-        max_steps=500
+        logging_steps=1,
+        max_steps=100,
+        fp16=True,
+        optim="paged_adamw_8bit",
     )
-
-    tokenizer.padding_side = 'right'
-    tokenizer.pad_token = tokenizer.eos_token
-
-    # model = model.to(device)
 
     trainer = SFTTrainer(
         model=model,
@@ -77,13 +77,14 @@ def run_training():
         tokenizer=tokenizer,
         train_dataset=train,
         eval_dataset=val,
+        peft_config=lora_config,
         dataset_text_field=PROMPT_FIELD,
         max_seq_length=MAX_CONTEXT_LENGTH,
     )
 
     trainer.train()
 
-    # Problem: ptxas /tmp/compile-ptx-src-deebe9, line 406; error   : Feature '.bf16' requires .target sm_80 or higher
+    # [previous] Problem: ptxas /tmp/compile-ptx-src-deebe9, line 406; error   : Feature '.bf16' requires .target sm_80 or higher
 
     output_dir = os.path.join(OUTPUT_DIR, "final_checkpoint")
     trainer.model.save_pretrained(output_dir)
@@ -113,41 +114,6 @@ def prepare_dataset_for_training(dataset, tokenizer):
     
     dataset = Dataset.from_pandas(dataset)
     return dataset
-
-
-# def get_trainer(train, val, tokenizer):
-    # peft_config = LoraConfig(
-    #     lora_alpha=16,
-    #     lora_dropout=0.1,
-    #     r=64,
-    #     bias="none",
-    #     task_type="CAUSAL_LM",
-    # )
-
-    # training_args = TrainingArguments(
-    #     output_dir=OUTPUT_DIR,
-    #     per_device_train_batch_size=4,
-    #     gradient_accumulation_steps=4,
-    #     learning_rate=2e-4,
-    #     logging_steps=10,
-    #     max_steps=500
-    # )
-
-    # tokenizer.padding_side = 'right'
-    # tokenizer.pad_token = tokenizer.eos_token
-
-    # trainer = SFTTrainer(
-    #     model=base_model,
-    #     train_dataset=train,
-    #     eval_dataset=val,
-    #     dataset_text_field=PROMPT_FIELD,
-    #     peft_config=peft_config,
-    #     max_seq_length=MAX_CONTEXT_LENGTH,
-    #     tokenizer=tokenizer,
-    #     args=training_args,
-    # )
-
-    # return trainer
 
 
 if __name__ == "__main__":
