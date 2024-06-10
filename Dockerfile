@@ -16,4 +16,4 @@ RUN pip install --upgrade pip && \
     pip install pandas transformers accelerate peft trl wandb bitsandbytes
 
 # Specify the default command to run when starting the container
-CMD ["bash"]
+CMD ["python", "training.py"]
