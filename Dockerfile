@@ -13,7 +13,7 @@ RUN apt-get update && \
 # Install Python packages
 RUN pip install --upgrade pip && \
     pip install -U torch && \
-    pip install pandas transformers accelerate peft trl wandb bitsandbytes
+    pip install pandas transformers accelerate peft trl wandb bitsandbytes huggingface_hub
 
 # Specify the default command to run when starting the container
-CMD ["python", "training.py"]
+CMD ["python", "repos/preprocessing/training.py"]

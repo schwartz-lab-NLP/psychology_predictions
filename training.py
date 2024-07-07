@@ -1,17 +1,21 @@
-from get_device import get_device_number, GPU_NUMBER
+# from get_device import get_device_number, GPU_NUMBER
 
-if GPU_NUMBER is None:
-    GPU_NUMBER = get_device_number(set_visible_devices=True)
+# if GPU_NUMBER is None:
+#     GPU_NUMBER = get_device_number(set_visible_devices=True)
+
+# import os
+# os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+# print("Setting: os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'")
 
 import os
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-print("Setting: os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'")
-
 import torch
-from transformers import TrainingArguments, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig
-from trl import ModelConfig, SFTTrainer, get_kbit_device_map, get_peft_config, get_quantization_config
+from trl import ModelConfig, SFTConfig, SFTTrainer, get_kbit_device_map, get_peft_config, get_quantization_config
 from datasets import Dataset
+from huggingface_hub import login
+import wandb
+
 
 from data_prep import Preprocess, SESSION_PREFIX, SESSION_POSTFIX
 
@@ -23,15 +27,21 @@ MAX_CONTEXT_LENGTH = 4096
 MAX_NEW_TOKENS = 1
 
 OUTPUT_DIR = "/workspace/repos/results/llama2_qlora_try1"
+RUN_NAME = 'yuvalarbel-danaatzil-training-try1.2'
 
 PROMPT_FIELD = "prompt"
 TAG_FIELD = "completion"
 TAG_MAPPING = {1: 'Yes', -1: 'No'}
 
+HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
+WANDB_API_KEY = os.getenv('WANDB_API_KEY')
+
 
 def run_training():
+    all_logins()
+
     train, val, test = Preprocess().run()
-    device = torch.device('cuda')
+    # device = torch.device('cuda')
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,  # Activate 4-bit precision base model loading,
@@ -59,16 +69,21 @@ def run_training():
         task_type="CAUSAL_LM",
     )
 
-    args = TrainingArguments(
+    print('Running with per_device_train_batch_size=1')
+
+    args = SFTConfig(
         output_dir=OUTPUT_DIR,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         warmup_steps=2,
         learning_rate=2e-4,
         logging_steps=1,
-        max_steps=100,
+        # max_steps=100,
         fp16=True,
         optim="paged_adamw_8bit",
+        dataset_text_field=PROMPT_FIELD,
+        max_seq_length=MAX_CONTEXT_LENGTH,
+        run_name=RUN_NAME
     )
 
     trainer = SFTTrainer(
@@ -78,8 +93,6 @@ def run_training():
         train_dataset=train,
         eval_dataset=val,
         peft_config=lora_config,
-        dataset_text_field=PROMPT_FIELD,
-        max_seq_length=MAX_CONTEXT_LENGTH,
     )
 
     trainer.train()
@@ -114,6 +127,20 @@ def prepare_dataset_for_training(dataset, tokenizer):
     
     dataset = Dataset.from_pandas(dataset)
     return dataset
+
+
+def all_logins():
+    if HUGGINGFACE_TOKEN:
+        login(token=HUGGINGFACE_TOKEN)
+        print("Logged in to Hugging Face")
+    else:
+        print("Hugging Face token not found")
+
+    if WANDB_API_KEY:
+        wandb.login(key=WANDB_API_KEY)
+        print("Logged in to WandB")
+    else:
+        print("WandB API Key not found")
 
 
 if __name__ == "__main__":
