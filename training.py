@@ -11,10 +11,11 @@ import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig
-from trl import ModelConfig, SFTConfig, SFTTrainer, get_kbit_device_map, get_peft_config, get_quantization_config
+from trl import SFTConfig, SFTTrainer
 from datasets import Dataset
 from huggingface_hub import login
 import wandb
+from accelerate import Accelerator
 
 
 from data_prep import Preprocess, SESSION_PREFIX, SESSION_POSTFIX
@@ -40,11 +41,14 @@ WANDB_API_KEY = os.getenv('WANDB_API_KEY')
 def run_training():
     all_logins()
 
+    accelerator = Accelerator()
+
     train, val, test = Preprocess().run()
     # device = torch.device('cuda')
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,  # Activate 4-bit precision base model loading,
+        bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",  # Quantization type (fp4 or nf4),
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
@@ -95,12 +99,20 @@ def run_training():
         peft_config=lora_config,
     )
 
+    model, trainer.train_dataloader, trainer.eval_dataloader = accelerator.prepare(
+        model, trainer.train_dataloader, trainer.eval_dataloader
+    )
+
+    model.train()
+
     trainer.train()
 
     # [previous] Problem: ptxas /tmp/compile-ptx-src-deebe9, line 406; error   : Feature '.bf16' requires .target sm_80 or higher
 
     output_dir = os.path.join(OUTPUT_DIR, "final_checkpoint")
-    trainer.model.save_pretrained(output_dir)
+    accelerator.wait_for_everyone()
+    unwrapped_model = accelerator.unwrap_model(model)
+    unwrapped_model.save_pretrained(output_dir)
 
 
 def _check_num_tokens(text, tokenizer):
