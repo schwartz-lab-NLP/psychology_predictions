@@ -1,6 +1,3 @@
-# import ptvsd
-# ptvsd.enable_attach(address=('0.0.0.0', 5678))
-
 import time
 import re
 from collections import Counter
@@ -155,7 +152,7 @@ class Preprocess:
         ses = self.df[self.df.filterindex == 'OE9233_2']
         a = ses.iloc[137:183]
         b = ses.iloc[183:229]
-        assert (a.event_plaintext_full.to_numpy() == b.event_plaintext_full.to_numpy()).all(), "Check again the indexes of 'OE9233_2's duplicated lines"
+        assert (a.event_plaintext.to_numpy() == b.event_plaintext.to_numpy()).all(), "Check again the indexes of 'OE9233_2's duplicated lines"
         self.df = self.df[(self.df.filterindex != 'OE9233_2') | (~self.df.index.isin(b.index))].copy()
 
         if IGNORE_SESSIONS:
@@ -209,7 +206,7 @@ class Preprocess:
         self.verbose_print("Extracting 'timestamp' rows as new column...")
 
         # Get timestamps from timestamp texts
-        timestamps = self.df.event_plaintext_full.where(self.df.event_speaker == 'Timestamp')
+        timestamps = self.df.event_plaintext.where(self.df.event_speaker == 'Timestamp')
         timestamps = timestamps.str.replace(' ', '')
         timestamps = pd.to_datetime(timestamps, format='%H:%M:%S')
 
