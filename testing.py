@@ -42,7 +42,10 @@ def evaluate_model_on_test_set(test_set, model, tokenizer):
         prediction = inference(example[PROMPT_FIELD], model, tokenizer)
         tag = TAG_MAPPING[example[TAG_FIELD]]
         correct = prediction == tag
-        print(("X", "V")[correct], end='', flush=True)
+        if prediction is not None:
+            print(("X", "V")[correct], end='', flush=True)
+        else:
+            print("N", end='', flush=True)
         results.append((tag, prediction, correct))
     
     print(results)
@@ -62,9 +65,13 @@ def get_scores(results):
     percent_ones = round(num_ones / total, 2)
     print(f"{percent_ones}%")
 
+    total = len([l for l in results if l[1] is not None])
+    print("Total successful predictions:", total)
     tp, tn, fp, fn = 0, 0, 0, 0
     for tag, prediction, correct in results:
-        if tag == 1 and correct:
+        if prediction is None:
+            continue
+        elif tag == 1 and correct:
             tp += 1
         elif tag == -1 and correct:
             tn += 1
@@ -113,6 +120,12 @@ def inference(prompt, model, tokenizer):
             if pred > max_score:
                 final_prediction = prediction
                 max_score = pred
+    
+    if final_prediction is None:
+        print("Prediction is None (-infs). Outputs:")
+        resp = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        resp = resp.replace(prompt, '').strip()
+        print(resp)
     
     return final_prediction
 
